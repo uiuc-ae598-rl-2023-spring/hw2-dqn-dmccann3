@@ -18,9 +18,9 @@ BATCH_SIZE = 64
 GAMMA = 0.95
 LR = 1e-3
 # LR = 0.00025
-MIN_BUFFER_SIZE = 1000
+# MIN_BUFFER_SIZE = 64 # FIXME Change when doing different ablation study
+MIN_BUFFER_SIZE = 10000
 
-# steps_done = 0
 
 # Init a named tuple for pulling from the buffer
 Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward', 'done'))
@@ -76,7 +76,9 @@ class Buffer(object):
     
 
 class DQN():
-    def __init__(self, capacity, num_episodes, e_start, e_end, e_decay):
+    def __init__(self, capacity, num_episodes, e_start, e_end, e_decay, PATH_NAME):
+        # Name for network to save
+        self.PATH = PATH_NAME
 
         # Init env 
         self.env = Pendulum()
@@ -100,6 +102,8 @@ class DQN():
 
         # Lists to store reward
         self.rewards = []
+        self.score = []
+        self.returns = []
         
 
     def fill_buffer(self, min_buffer_size):
@@ -166,7 +170,7 @@ class DQN():
         loss.backward()
         self.optimizer.step()
 
-        # Update target net
+        # Update target net (NORMAL ALG)
         if step % 100 == 0:
             self.target_Q.load_state_dict(self.Q.state_dict())
 
@@ -174,6 +178,15 @@ class DQN():
             print()
             print('Step:', step)
             print('Avg Reward:', np.mean(self.rewards))
+            self.score.append(np.mean(self.rewards))
+
+        # Update target net (NO TARGET ALG)        
+        # self.target_Q.load_state_dict(self.Q.state_dict())
+
+        # print()
+        # print('Step:', step)
+        # print('Avg Reward:', np.mean(self.rewards))
+        # self.score.append(np.mean(self.rewards))
 
         
 
@@ -182,6 +195,7 @@ class DQN():
 
         s = self.env.reset()
         epi_reward = 0.0
+        reward_for_return = []
         for step in itertools.count():
             a = self.get_action(s, step)
 
@@ -189,69 +203,86 @@ class DQN():
             self.buffer.add( s, a, s1, r, done)
             s = s1
 
+            reward_for_return.append(r)
             epi_reward += r
-
+            
             if done:
                 s = self.env.reset()
                 self.rewards.append(r)
                 epi_reward = 0.0
-
+                self.returns.append(self.get_return(reward_for_return))
+                reward_for_return = []
+                
             self.optimize(step)
 
-            if step == 100000:
+            if step == 70000:
                 break
         
-        PATH = 'qnet.pth'
+        PATH = self.PATH
         torch.save(self.Q, PATH)
 
         return step
-
     
-    def run(self, filename='pendulum.gif', writer='imagemagick'):
-        PATH = 'qnet.pth'
+
+    def policy(self, s):
+        PATH = self.PATH
         Q = torch.load(PATH)
+        s = torch.as_tensor(s, dtype=torch.float32).unsqueeze(0)
+        q_vals = Q(s)
+        max_q_index = torch.argmax(q_vals, dim=1)[0]
+        action = max_q_index.detach().item()
+        return action
+    
+    def get_state_val(self, s):
+        PATH = self.PATH
+        Q = torch.load(PATH)
+        s = torch.as_tensor(s, dtype=torch.float32).unsqueeze(0)
+        q_vals = Q(s)
+        v = max(q_vals)
+        return v
+    
+    
+    def run(self):
         S = []
         A = []
         R = []
         s = self.env.reset()
         S.append(s)
-        A.append(0)
-        R.append(0)
-        s = torch.tensor(s, dtype=torch.float32).unsqueeze(0)
-        dt = 0.1
-        s_traj = [s]
+        A.append(0.0)
+        R.append(0.0)
         done = False
         steps = 0
         while not done:
-            a_ = Q(s)
-            a = torch.argmax(a_, dim=1)[0].detach().item()
+            a = self.policy(s)
             A.append(a)
-            (s, r, done) = self.env.step(a)
-            s_traj.append(s)
+            s, r, done = self.env.step(a)
             S.append(s)
             R.append(r)
-            s = torch.tensor(s, dtype=torch.float32).unsqueeze(0)
             steps += 1
-
-        fig = plt.figure(figsize=(5, 4))
-        ax = fig.add_subplot(111, autoscale_on=False, xlim=(-1.2, 1.2), ylim=(-1.2, 1.2))
-        ax.set_aspect('equal')
-        ax.grid()
-        line, = ax.plot([], [], 'o-', lw=2)
-        text = ax.set_title('')
-
-        def animate(i):
-            theta = s_traj[i][0]
-            line.set_data([0, -np.sin(theta)], [0, np.cos(theta)])
-            text.set_text(f'time = {i * dt:3.1f}')
-            return line, text
-
-        anim = animation.FuncAnimation(fig, animate, len(s_traj), interval=(1000 * dt), blit=True, repeat=False)
-        anim.save(filename, writer=writer, fps=10)
-
-        plt.close()
+        policy = self.policy
+        self.env.video(policy, filename='pendulum2.gif')
 
         return S, A, R, steps
+    
+    def plotting(self):
+        Q = torch.load(self.PATH)
+        size = 500
+        theta_vec = np.linspace(-np.pi, np.pi, size)
+        thetadot_vec = np.linspace(-self.env.max_thetadot, self.env.max_thetadot, size)
+        theta_grid, thetadot_grid = np.meshgrid(theta_vec, thetadot_vec)
+        policy = np.zeros((size, size))
+        val_func = np.zeros((size, size))
+        for i, j in itertools.product(range(size), range(size)):
+            s = np.array([theta_grid[i, j], thetadot_grid[i, j]])
+            predict = Q(torch.FloatTensor(s)).detach().numpy()
+            policy[i, j] = self.env._a_to_u(np.argmax(predict))
+            val_func[i, j] = np.max(predict)
+
+        return theta_grid, thetadot_grid, policy, val_func
+
+
+
+    
 
        
 
