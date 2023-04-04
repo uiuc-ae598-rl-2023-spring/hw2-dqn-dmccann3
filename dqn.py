@@ -19,7 +19,7 @@ GAMMA = 0.95
 LR = 1e-3
 # LR = 0.00025
 # MIN_BUFFER_SIZE = 64 # FIXME Change when doing different ablation study
-MIN_BUFFER_SIZE = 10000
+MIN_BUFFER_SIZE = 1000
 
 
 # Init a named tuple for pulling from the buffer
@@ -260,7 +260,7 @@ class DQN():
             R.append(r)
             steps += 1
         policy = self.policy
-        self.env.video(policy, filename='pendulum2.gif')
+        self.env.video(policy, filename='pendulum3.gif')
 
         return S, A, R, steps
     
@@ -279,6 +279,93 @@ class DQN():
             val_func[i, j] = np.max(predict)
 
         return theta_grid, thetadot_grid, policy, val_func
+
+
+    # def get_avg_scores(self):
+    #     Q1_path = 'qnet3.pth'
+    #     Q2_path = 'no_target.pth'
+    #     Q3_path = 'no_replay.pth'
+    #     Q4_path = 'no_target_replay.pth'
+    #     Q1_list = []
+    #     Q2_list = []
+    #     Q3_list = []
+    #     Q4_list = []
+    #     done = False
+    #     for i in range(200):
+    #         rew_list = []
+    #         s = self.env.reset()
+    #         while not done:
+    #             a = self.policy(s, Q1_path)
+    #             s, r, done = self.env.step(a)
+    #             rew_list.append(r)
+    #         Q1_list.append(np.mean(rew_list))
+    #     done = False
+    #     for i in range(200):
+    #         rew_list = []
+    #         s = self.env.reset()
+    #         while not done:
+    #             a = self.policy(s, Q2_path)
+    #             s, r, done = self.env.step(a)
+    #             rew_list.append(r)
+    #         Q2_list.append(np.mean(rew_list))
+    #     done = False
+    #     for i in range(200):
+    #         rew_list = []
+    #         s = self.env.reset()
+    #         while not done:
+    #             a = self.policy(s, Q3_path)
+    #             s, r, done = self.env.step(a)
+    #             rew_list.append(r)
+    #         Q3_list.append(np.mean(rew_list))
+    #     done = False
+    #     for i in range(200):
+    #         rew_list = []
+    #         s = self.env.reset()
+    #         while not done:
+    #             a = self.policy(s, Q4_path)
+    #             s, r, done = self.env.step(a)
+    #             rew_list.append(r)
+    #         Q4_list.append(np.mean(rew_list))
+
+    #     # print final average scores
+    #     print(Q1_list)
+    #     print(Q2_list)
+    #     print(Q3_list)
+    #     print(Q4_list)
+
+    #     print(f'Average Score for standard DQN {np.mean(Q1_list[1:])}')
+    #     print(f'Average Score for No Target DQN {np.mean(Q2_list[1:])}')
+    #     print(f'Average Score for No Replay DQN {np.mean(Q3_list[1:])}')
+    #     print(f'Average Score for No Target No Replay DQN {np.mean(Q4_list[1:])}')
+
+    #     return Q1_list, Q2_list, Q3_list, Q4_list
+
+    def get_avg(self):
+        S = []
+        A = []
+        R = []
+        avg_rew = 0
+        s = self.env.reset()
+        S.append(s)
+        A.append(0.0)
+        R.append(0.0)
+        done = False
+        steps = 0
+        while not done:
+            a = self.policy(s)
+            A.append(a)
+            s, r, done = self.env.step(a)
+            S.append(s)
+            R.append(r)
+            steps += 1
+        avg_rew = np.mean(R)
+        policy = self.policy
+
+        return avg_rew
+        
+            
+
+
 
 
 
